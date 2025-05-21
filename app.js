@@ -7,24 +7,25 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // Middleware
-const cors=require("cors");
-const corsOptions ={
-   origin:'*', 
-   credentials:true,            //access-control-allow-credentials:true
-   optionSuccessStatus:200,
-}
-app.use(cors(corsOptions))
+const corsOptions = {
+  origin: '*',
+  credentials: true,
+  optionSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
-// Nodemailer Transporter Setup
+// Nodemailer Transporter Setup for GoDaddy
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtpout.secureserver.net', // GoDaddy SMTP server
+  port: 465, // Use 465 for SSL
+  secure: true, // true for port 465 (SSL)
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: process.env.EMAIL_USER, // Your GoDaddy email (e.g., yourname@yourdomain.com)
+    pass: process.env.EMAIL_PASS, // Your GoDaddy email password
   },
   tls: {
-    rejectUnauthorized: false
+    rejectUnauthorized: false // Optional: use if certificate issues arise
   }
 });
 
@@ -36,7 +37,7 @@ transporter.verify((error, success) => {
   }
 });
 
-// --- Reusable Email Sending Function ---
+// Reusable Email Sending Function
 async function sendGenericEmail(mailOptions) {
   const optionsWithDefaults = {
     from: `"${process.env.APP_NAME || 'Your Application'}" <${process.env.EMAIL_USER}>`,
@@ -59,19 +60,17 @@ async function sendGenericEmail(mailOptions) {
   }
 }
 
-// --- ORIGINAL API Endpoint (for your OLD component) ---
-// This endpoint expects a payload similar to your initial backend setup.
-// Expected fields: name, email, company, phone, message, subject (for general), service (for business/support), inquiryType
+// ORIGINAL API Endpoint (for your OLD component)
 app.post('/api/send-email', async (req, res) => {
   const {
     name,
     email,
-    company,      // Field from your original backend
+    company,
     phone,
     message,
-    subject: generalSubject, // Subject specific to general inquiry in original logic
-    service,      // Specific to business/support in original logic
-    inquiryType,  // E.g., 'general', 'business', 'support' from original logic
+    subject: generalSubject,
+    service,
+    inquiryType,
   } = req.body;
 
   if (!name || !email || !message || !inquiryType) {
@@ -99,11 +98,10 @@ app.post('/api/send-email', async (req, res) => {
   emailBody += `<h3>Message:</h3><p>${message.replace(/\n/g, '<br>')}</p>`;
   emailBody += `<hr><p>This email was sent from the contact form on your website (Legacy Endpoint).</p>`;
 
-
   const mailOptions = {
-    from: `"${name} via Contact Form" <${process.env.EMAIL_USER}>`,
-    replyTo: email,
-    to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER,
+    from: `"${name}" <${process.env.EMAIL_USER}>`, // Sender appears as form user's name
+    replyTo: email, // Replies go to form user's email
+    to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER, // Sent to your GoDaddy email
     subject: emailSubjectLine,
     html: emailBody,
   };
@@ -116,14 +114,13 @@ app.post('/api/send-email', async (req, res) => {
   }
 });
 
-// --- NEW API Endpoint (for your NEW ContactUs.tsx component) ---
-// Expected fields from new component: name, email, phone, subject (userSubject), enquiryType, message, activeTab
+// NEW API Endpoint (for your NEW ContactUs.tsx component)
 app.post('/api/send-contact-email', async (req, res) => {
   const {
     name,
     email,
     phone,
-    subject: userSubject, // Renamed from 'subject' to avoid conflict
+    subject: userSubject,
     enquiryType,
     message,
     activeTab,
@@ -152,9 +149,9 @@ app.post('/api/send-contact-email', async (req, res) => {
   emailBody += `<hr><p>This email was sent from the new contact form on your website.</p>`;
 
   const mailOptions = {
-    from: `"${name} (Contact Form)" <${process.env.EMAIL_USER}>`,
-    replyTo: email,
-    to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER,
+    from: `"${name}" <${process.env.EMAIL_USER}>`, // Sender appears as form user's name
+    replyTo: email, // Replies go to form user's email
+    to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER, // Sent to your GoDaddy email
     subject: emailSubjectLine,
     html: emailBody,
   };
@@ -167,15 +164,14 @@ app.post('/api/send-contact-email', async (req, res) => {
   }
 });
 
-
-// Example: API Endpoint for a Different Component (e.g., sending a welcome email) - kept for reusability demo
+// Example API Endpoint for Welcome Email
 app.post('/api/send-welcome-email', async (req, res) => {
   const { userName, userEmail } = req.body;
 
   if (!userName || !userEmail) {
     return res.status(400).json({ message: 'User name and email are required for welcome email.' });
   }
-  // ... (rest of the welcome email logic as in previous response)
+
   const welcomeSubject = `Welcome to Our Platform, ${userName}!`;
   const welcomeHtmlBody = `
     <h1>Welcome, ${userName}!</h1>
@@ -185,6 +181,7 @@ app.post('/api/send-welcome-email', async (req, res) => {
   `;
 
   const mailOptions = {
+    from: `"${process.env.APP_NAME || 'Your Application'}" <${process.env.EMAIL_USER}>`,
     to: userEmail,
     subject: welcomeSubject,
     html: welcomeHtmlBody,
@@ -199,15 +196,6 @@ app.post('/api/send-welcome-email', async (req, res) => {
   }
 });
 
-
 app.listen(port, () => {
   console.log(`Backend server running at http://localhost:${port}`);
 });
-
-// .env file should contain:
-// EMAIL_USER=your_gmail_address@gmail.com
-// EMAIL_PASS=your_gmail_app_password
-// EMAIL_RECEIVER=email_address_to_receive_contact_form_submissions@example.com (can be same as EMAIL_USER)
-// APP_NAME=Your Website Name
-// PORT=3001
-// SUPPORT_EMAIL=support_department_email@example.com (Optional, for welcome email example)
