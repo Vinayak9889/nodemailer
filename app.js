@@ -7,207 +7,182 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // Middleware
-
-const corsOptions ={
-   origin:'*', 
-   credentials:true,            //access-control-allow-credentials:true
-   optionSuccessStatus:200,
-}
-app.use(cors(corsOptions))
+const corsOptions = {
+  origin: '*',
+  credentials: true,
+  optionSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
-// Nodemailer Transporter Setup
+// ✅ Nodemailer Transporter Setup for GoDaddy Email
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtpout.secureserver.net',
+  port: 465, // use 587 for TLS
+  secure: true, // true for port 465, false for 587
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  tls: {
-    rejectUnauthorized: false
-  }
 });
 
 transporter.verify((error, success) => {
   if (error) {
-    console.error('Error with Nodemailer transporter config:', error);
+    console.error('Nodemailer transporter error:', error);
   } else {
     console.log('Nodemailer transporter is ready to send emails');
   }
 });
 
-// --- Reusable Email Sending Function ---
+// ✅ Reusable Email Sending Function
 async function sendGenericEmail(mailOptions) {
   const optionsWithDefaults = {
-    from: `"${process.env.APP_NAME || 'Your Application'}" <${process.env.EMAIL_USER}>`,
+    from: `"${process.env.APP_NAME || 'Your Website'}" <${process.env.EMAIL_USER}>`,
     ...mailOptions,
   };
 
   try {
     const info = await transporter.sendMail(optionsWithDefaults);
-    console.log('Email sent successfully:', info.messageId);
+    console.log('Email sent:', info.messageId);
     return info;
   } catch (error) {
-    console.error('Error sending email via generic function:', error);
-    if (error.response) {
-      console.error('Error response:', error.response);
-    }
-    if (error.responseCode) {
-      console.error('Error response code:', error.responseCode);
-    }
+    console.error('Email sending error:', error);
+    if (error.response) console.error('Response:', error.response);
+    if (error.responseCode) console.error('Code:', error.responseCode);
     throw error;
   }
 }
 
-// --- ORIGINAL API Endpoint (for your OLD component) ---
-// This endpoint expects a payload similar to your initial backend setup.
-// Expected fields: name, email, company, phone, message, subject (for general), service (for business/support), inquiryType
+// ✅ API: Original Legacy Contact Form
 app.post('/api/send-email', async (req, res) => {
   const {
     name,
     email,
-    company,      // Field from your original backend
+    company,
     phone,
     message,
-    subject: generalSubject, // Subject specific to general inquiry in original logic
-    service,      // Specific to business/support in original logic
-    inquiryType,  // E.g., 'general', 'business', 'support' from original logic
+    subject: generalSubject,
+    service,
+    inquiryType,
   } = req.body;
 
   if (!name || !email || !message || !inquiryType) {
-    return res.status(400).json({ message: 'Name, email, message, and inquiryType are required.' });
+    return res.status(400).json({ message: 'Required fields missing.' });
   }
 
-  let emailSubjectLine = `New Contact Form Submission - ${inquiryType.charAt(0).toUpperCase() + inquiryType.slice(1)}`;
-  let emailBody = `
-    <h2>New Contact Form Submission</h2>
+  let subject = `New Contact Form Submission - ${inquiryType}`;
+  let body = `
+    <h2>Contact Form Submission</h2>
     <p><strong>Inquiry Type:</strong> ${inquiryType}</p>
     <p><strong>Name:</strong> ${name}</p>
     <p><strong>Email:</strong> ${email}</p>
+    ${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}
+    ${phone ? `<p><strong>Phone:</strong> ${phone}</p>` : ''}
+    ${inquiryType === 'general' && generalSubject ? `<p><strong>Subject:</strong> ${generalSubject}</p>` : ''}
+    ${(inquiryType === 'business' || inquiryType === 'support') && service
+      ? `<p><strong>Service:</strong> ${service}</p>` : ''}
+    <h3>Message:</h3>
+    <p>${message.replace(/\n/g, '<br>')}</p>
+    <hr>
+    <p>Sent via contact form (legacy)</p>
   `;
-
-  if (company) emailBody += `<p><strong>Company:</strong> ${company}</p>`;
-  if (phone) emailBody += `<p><strong>Phone:</strong> ${phone}</p>`;
-
-  if (inquiryType === 'general' && generalSubject) {
-    emailBody += `<p><strong>Subject:</strong> ${generalSubject}</p>`;
-  } else if ((inquiryType === 'business' || inquiryType === 'support') && service) {
-    const serviceLabel = inquiryType === 'business' ? "Partnership Type / Service of Interest" : "Issue Category / Service";
-    emailBody += `<p><strong>${serviceLabel}:</strong> ${service}</p>`;
-  }
-
-  emailBody += `<h3>Message:</h3><p>${message.replace(/\n/g, '<br>')}</p>`;
-  emailBody += `<hr><p>This email was sent from the contact form on your website (Legacy Endpoint).</p>`;
-
 
   const mailOptions = {
     from: `"${name} via Contact Form" <${process.env.EMAIL_USER}>`,
     replyTo: email,
-    to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER,
-    subject: emailSubjectLine,
-    html: emailBody,
+    to: process.env.EMAIL_RECEIVER,
+    subject,
+    html: body,
   };
 
   try {
     await sendGenericEmail(mailOptions);
-    res.status(200).json({ message: 'Email sent successfully!' });
+    res.status(200).json({ message: 'Email sent successfully.' });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to send email. Server error.', error: error.message });
+    res.status(500).json({ message: 'Failed to send email.', error: error.message });
   }
 });
 
-// --- NEW API Endpoint (for your NEW ContactUs.tsx component) ---
-// Expected fields from new component: name, email, phone, subject (userSubject), enquiryType, message, activeTab
+// ✅ API: New Contact Form (ContactUs.tsx)
 app.post('/api/send-contact-email', async (req, res) => {
   const {
     name,
     email,
     phone,
-    subject: userSubject, // Renamed from 'subject' to avoid conflict
+    subject: userSubject,
     enquiryType,
     message,
     activeTab,
   } = req.body;
 
   if (!name || !email || !message || !userSubject || !enquiryType || !activeTab) {
-    return res.status(400).json({
-      message: 'Missing required fields: name, email, subject, enquiryType, message, and activeTab are required.'
-    });
+    return res.status(400).json({ message: 'Missing required fields.' });
   }
 
   const tabLabel = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
-  const emailSubjectLine = `New ${tabLabel} Inquiry: "${userSubject}" from ${name}`;
+  const subject = `New ${tabLabel} Inquiry: "${userSubject}" from ${name}`;
 
-  let emailBody = `
+  let body = `
     <h2>New Contact Form Submission (${tabLabel})</h2>
     <p><strong>Name:</strong> ${name}</p>
     <p><strong>Email:</strong> ${email}</p>
+    ${phone ? `<p><strong>Phone:</strong> ${phone}</p>` : ''}
+    <p><strong>Tab:</strong> ${tabLabel}</p>
+    <p><strong>Enquiry Type:</strong> ${enquiryType}</p>
+    <p><strong>Subject:</strong> ${userSubject}</p>
+    <h3>Message:</h3>
+    <p>${message.replace(/\n/g, '<br>')}</p>
+    <hr>
+    <p>Sent via new contact form</p>
   `;
-
-  if (phone) emailBody += `<p><strong>Phone:</strong> ${phone}</p>`;
-  emailBody += `<p><strong>Selected Tab:</strong> ${tabLabel}</p>`;
-  emailBody += `<p><strong>Enquiry Type (Dropdown):</strong> ${enquiryType}</p>`;
-  emailBody += `<p><strong>User's Subject (Input Field):</strong> ${userSubject}</p>`;
-  emailBody += `<h3>Message:</h3><p>${message.replace(/\n/g, '<br>')}</p>`;
-  emailBody += `<hr><p>This email was sent from the new contact form on your website.</p>`;
 
   const mailOptions = {
     from: `"${name} (Contact Form)" <${process.env.EMAIL_USER}>`,
     replyTo: email,
-    to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER,
-    subject: emailSubjectLine,
-    html: emailBody,
+    to: process.env.EMAIL_RECEIVER,
+    subject,
+    html: body,
   };
 
   try {
     await sendGenericEmail(mailOptions);
-    res.status(200).json({ message: 'Email sent successfully! We will get back to you shortly.' });
+    res.status(200).json({ message: 'Email sent successfully!' });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to send email. Please try again later.', error: error.message });
+    res.status(500).json({ message: 'Email failed to send.', error: error.message });
   }
 });
 
-
-// Example: API Endpoint for a Different Component (e.g., sending a welcome email) - kept for reusability demo
+// ✅ API: Welcome Email Example
 app.post('/api/send-welcome-email', async (req, res) => {
   const { userName, userEmail } = req.body;
 
   if (!userName || !userEmail) {
-    return res.status(400).json({ message: 'User name and email are required for welcome email.' });
+    return res.status(400).json({ message: 'User name and email are required.' });
   }
-  // ... (rest of the welcome email logic as in previous response)
-  const welcomeSubject = `Welcome to Our Platform, ${userName}!`;
-  const welcomeHtmlBody = `
+
+  const subject = `Welcome to Our Platform, ${userName}!`;
+  const body = `
     <h1>Welcome, ${userName}!</h1>
-    <p>Thank you for signing up for Our Platform.</p>
-    <p>We're excited to have you on board.</p>
-    <p>Best regards,<br>The Our Platform Team</p>
+    <p>Thanks for joining our platform. We're excited to have you!</p>
+    <p>Best regards,<br>The ${process.env.APP_NAME} Team</p>
   `;
 
   const mailOptions = {
     to: userEmail,
-    subject: welcomeSubject,
-    html: welcomeHtmlBody,
-    replyTo: process.env.SUPPORT_EMAIL || process.env.EMAIL_USER
+    subject,
+    html: body,
+    replyTo: process.env.SUPPORT_EMAIL || process.env.EMAIL_USER,
   };
 
   try {
     await sendGenericEmail(mailOptions);
-    res.status(200).json({ message: `Welcome email sent successfully to ${userEmail}!` });
+    res.status(200).json({ message: `Welcome email sent to ${userEmail}.` });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to send welcome email.', error: error.message });
+    res.status(500).json({ message: 'Welcome email failed to send.', error: error.message });
   }
 });
 
-
+// Start server
 app.listen(port, () => {
-  console.log(`Backend server running at http://localhost:${port}`);
+  console.log(`Server running at http://localhost:${port}`);
 });
-
-// .env file should contain:
-// EMAIL_USER=your_gmail_address@gmail.com
-// EMAIL_PASS=your_gmail_app_password
-// EMAIL_RECEIVER=email_address_to_receive_contact_form_submissions@example.com (can be same as EMAIL_USER)
-// APP_NAME=Your Website Name
-// PORT=3001
-// SUPPORT_EMAIL=support_department_email@example.com (Optional, for welcome email example)
