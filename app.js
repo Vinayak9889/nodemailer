@@ -114,6 +114,34 @@ app.post('/api/send-email', async (req, res) => {
   }
 });
 
+app.post('/api/request-demo', async (req, res) => {
+    const { name, email, sector } = req.body;
+
+    if (!name || !email || !sector) {
+        return res.status(400).json({ message: 'All fields are required.' });
+    }
+
+    const mailOptions = {
+        from: process.env.GODADDY_EMAIL_USER, // Sender address
+        to: 'your_receiving_email@example.com', // The email address where you want to receive demo requests
+        subject: `New Demo Request from ${name} - Manufacturing Solution`,
+        html: `
+            <p><strong>Name:</strong> ${name}</p>
+            <p><strong>Email:</strong> ${email}</p>
+            <p><strong>Manufacturing Sector:</strong> ${sector}</p>
+            <p>This is a demo request from your website's CTA section.</p>
+        `,
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        res.status(200).json({ message: 'Demo request sent successfully!' });
+    } catch (error) {
+        console.error('Error sending email:', error);
+        res.status(500).json({ message: 'Failed to send demo request.' });
+    }
+});
+
 // NEW API Endpoint (for your NEW ContactUs.tsx component)
 app.post('/api/send-contact-email', async (req, res) => {
   const {
@@ -195,6 +223,7 @@ app.post('/api/send-welcome-email', async (req, res) => {
     res.status(500).json({ message: 'Failed to send welcome email.', error: error.message });
   }
 });
+
 
 app.listen(port, () => {
   console.log(`Backend server running at http://localhost:${port}`);
