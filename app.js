@@ -1,4 +1,3 @@
-// server.js
 require('dotenv').config(); // Load environment variables from .env file
 
 const express = require('express');
@@ -26,16 +25,12 @@ const transporter = nodemailer.createTransport({
         user: process.env.EMAIL_USER, // Your GoDaddy email (e.g., yourname@yourdomain.com)
         pass: process.env.EMAIL_PASS, // Your GoDaddy email password
     },
-    // tls: {
-    //     // rejectUnauthorized: false // Optional: use if certificate issues arise. Not recommended for production due to security risks.
-    // }
 });
 
 // Verify transporter connection
 transporter.verify((error, success) => {
     if (error) {
         console.error('Error with Nodemailer transporter config:', error);
-        // Log the specific details of the error for debugging
         if (error.response) console.error('Transporter Error Response:', error.response);
         if (error.responseCode) console.error('Transporter Error Response Code:', error.responseCode);
     } else {
@@ -45,7 +40,6 @@ transporter.verify((error, success) => {
 
 // Reusable Email Sending Function
 async function sendGenericEmail(mailOptions) {
-    // Ensure 'from' is always set using EMAIL_USER if not explicitly provided
     const optionsWithDefaults = {
         from: `"${process.env.APP_NAME || 'Your Application'}" <${process.env.EMAIL_USER}>`,
         ...mailOptions,
@@ -57,7 +51,6 @@ async function sendGenericEmail(mailOptions) {
         return info;
     } catch (error) {
         console.error('Error sending email via generic function:', error);
-        // Provide more detailed error information
         if (error.response) {
             console.error('Error response:', error.response);
         }
@@ -107,9 +100,8 @@ app.post('/api/send-email', async (req, res) => {
     emailBody += `<hr><p>This email was sent from the contact form on your website (Legacy Endpoint).</p>`;
 
     const mailOptions = {
-        // 'from' is handled by sendGenericEmail default, or explicitly here if needed
-        replyTo: email, // Replies go to form user's email
-        to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER, // Sent to your configured receiving email
+        replyTo: email,
+        to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER,
         subject: emailSubjectLine,
         html: emailBody,
     };
@@ -131,8 +123,8 @@ app.post('/api/request-demo', async (req, res) => {
     }
 
     const mailOptions = {
-        from: process.env.EMAIL_USER, // Consistent sender address
-        to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER, // The email address where you want to receive demo requests
+        from: process.env.EMAIL_USER,
+        to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER,
         subject: `New Demo Request from ${name} - Manufacturing Solution`,
         html: `
             <p><strong>Name:</strong> ${name}</p>
@@ -143,8 +135,7 @@ app.post('/api/request-demo', async (req, res) => {
     };
 
     try {
-        // Directly use transporter.sendMail or sendGenericEmail
-        await sendGenericEmail(mailOptions); // Using the reusable function
+        await sendGenericEmail(mailOptions);
         res.status(200).json({ message: 'Demo request sent successfully!' });
     } catch (error) {
         console.error('Error sending email for demo request:', error);
@@ -187,9 +178,8 @@ app.post('/api/send-contact-email', async (req, res) => {
     emailBody += `<hr><p>This email was sent from the new contact form on your website.</p>`;
 
     const mailOptions = {
-        // 'from' is handled by sendGenericEmail default, or explicitly here if needed
-        replyTo: email, // Replies go to form user's email
-        to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER, // Sent to your GoDaddy email
+        replyTo: email,
+        to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER,
         subject: emailSubjectLine,
         html: emailBody,
     };
@@ -202,7 +192,53 @@ app.post('/api/send-contact-email', async (req, res) => {
     }
 });
 
-// Example API Endpoint for Welcome Email
+// NEW API Endpoint for Newsletter Subscription
+app.post('/api/subscribe', async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({ message: 'Email is required.' });
+    }
+
+    // Email to admin (notification of new subscriber)
+    const adminMailOptions = {
+        to: process.env.EMAIL_RECEIVER || process.env.EMAIL_USER,
+        subject: `New Newsletter Subscriber: ${email}`,
+        html: `
+            <h2>New Newsletter Subscription</h2>
+            <p><strong>Email:</strong> ${email}</p>
+            <p>This email was subscribed via the newsletter form on your website.</p>
+        `,
+        replyTo: email,
+    };
+
+    // Welcome email to subscriber
+    const welcomeMailOptions = {
+        to: email,
+        subject: `Welcome to ${process.env.APP_NAME || 'Our Newsletter'}!`,
+        html: `
+            <h1>Welcome to Our Newsletter!</h1>
+            <p>Thank you for subscribing, ${email}!</p>
+            <p>Stay tuned for the latest updates, insights, and news about our services and technologies.</p>
+            <p>You can unsubscribe at any time using the link in our emails.</p>
+            <p>Best regards,<br>${process.env.APP_NAME || 'Our Team'}</p>
+        `,
+    };
+
+    try {
+        // Send both admin notification and welcome email
+        await Promise.all([
+            sendGenericEmail(adminMailOptions),
+            sendGenericEmail(welcomeMailOptions),
+        ]);
+        res.status(200).json({ message: 'Subscription successful! Welcome email sent.' });
+    } catch (error) {
+        console.error('Error handling newsletter subscription:', error);
+        res.status(500).json({ message: 'Failed to process subscription. Please try again.', error: error.message });
+    }
+});
+
+// Example API Endpoint for Welcome Email (unchanged)
 app.post('/api/send-welcome-email', async (req, res) => {
     const { userName, userEmail } = req.body;
 
@@ -219,11 +255,10 @@ app.post('/api/send-welcome-email', async (req, res) => {
     `;
 
     const mailOptions = {
-        // 'from' is handled by sendGenericEmail default, or explicitly here if needed
-        to: userEmail, // This email goes TO the user signing up
+        to: userEmail,
         subject: welcomeSubject,
         html: welcomeHtmlBody,
-        replyTo: process.env.SUPPORT_EMAIL || process.env.EMAIL_USER // Set a support email or use your main email
+        replyTo: process.env.SUPPORT_EMAIL || process.env.EMAIL_USER,
     };
 
     try {
@@ -233,7 +268,6 @@ app.post('/api/send-welcome-email', async (req, res) => {
         res.status(500).json({ message: 'Failed to send welcome email.', error: error.message });
     }
 });
-
 
 app.listen(port, () => {
     console.log(`Backend server running at http://localhost:${port}`);
